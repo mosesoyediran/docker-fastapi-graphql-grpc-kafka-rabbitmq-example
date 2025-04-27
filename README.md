@@ -40,7 +40,6 @@ It wires up a lot of real-world components without overloading the project with 
   - [Formatting](#formatting)
   - [Testing](#testing)
 - [Managing Dependencies](#managing-dependencies)
-- [Front-end Choices](#front-end-choices)
 - [Notable Opinions and Extensions](#notable-opinions-and-extensions)
 - [Additional Resources](#additional-resources)
 - [About the Author](#about-the-author)
@@ -58,11 +57,7 @@ It wires up a lot of real-world components without overloading the project with 
 - [Celery](https://github.com/celery/celery)
 - Optional: [RabbitMQ](https://www.rabbitmq.com/), [Kafka](https://kafka.apache.org/), gRPC Reflection
 
-### Front-end
 
-- [esbuild](https://esbuild.github.io/)
-- [TailwindCSS](https://tailwindcss.com/)
-- [Heroicons](https://heroicons.com/)
 
 ---
 
@@ -223,18 +218,7 @@ docker compose --profile rabbitmq up
 
 ---
 
-# 🎨 Front-end Choices
 
-Pick your JS framework depending on your needs:
-
-- [Hotwire](https://hotwired.dev/)
-- [HTMX](https://htmx.org/)
-- [AlpineJS](https://github.com/alpinejs/alpine)
-- [Vue.js](https://vuejs.org/)
-- [React.js](https://reactjs.org/)
-- [jQuery](https://jquery.com/)
-
----
 
 # 🧐 Notable Opinions and Extensions
 
@@ -250,7 +234,7 @@ Pick your JS framework depending on your needs:
 | **Docker**            | Full multi-stage builds                                     |
 | **CI**                | GitHub Actions setup                                        |
 | **Package Manager**   | [uv](https://github.com/astral-sh/uv)                       |
-| **Assets**            | TailwindCSS, esbuild, Heroicons                             |
+
 
 ---
 

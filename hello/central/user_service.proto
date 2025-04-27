@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+
+package hello.central;
+
+service UserService {
+  rpc Hello(HelloRequest)    returns (HelloReply);
+  rpc ListUsers(Empty)       returns (ListUsersReply);
+  rpc CreateUser(CreateUserRequest) returns (CreateUserReply);
+}
+
+message HelloRequest     { }
+message HelloReply       { string message = 1; }
+message Empty            { }
+message User             { string id = 1; string name = 2; }
+message ListUsersReply   { repeated User users = 1; }
+message CreateUserRequest { string name = 1; }
+message CreateUserReply  { bool ok = 1; string user_id = 2; string message = 3; }

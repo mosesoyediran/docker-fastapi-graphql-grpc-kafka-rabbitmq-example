@@ -1,0 +1,36 @@
+[project]
+name = "hello"
+version = "0.1.0"
+description = "An example FastAPI app running in Docker."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+  "alembic==1.15.2",
+  "celery==5.4.0",
+  "fastapi==0.110.2",
+  "uvicorn[standard]==0.29.0",
+  "psycopg==3.2.6",
+  "pytest==8.3.5",
+  "pytest-cov==6.0.0",
+  "redis==5.2.1",
+  "ruff==0.11.2",
+  "setuptools==78.1.0",
+  "sqlalchemy==2.0.40",
+  "sqlalchemy-utils==0.41.2",
+  "pydantic==2.11.3",
+  "pydantic-settings==2.9.1",
+  "httpx>=0.24.0",
+  "strawberry-graphql[fastapi]==0.266.0",
+  "grpcio==1.72.0",
+  "grpcio-tools==1.72.0",
+  "grpcio-reflection==1.72.0",
+  "aiokafka==0.12.0",
+  "confluent-kafka[cython]>=2.3",
+  "kombu[confluentkafka]>=5.3"
+]
+
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.lint]
+extend-select = ["I", "SIM"]

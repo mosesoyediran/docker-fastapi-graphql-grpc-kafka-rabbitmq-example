@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -e
+
+# If gRPC is toggled on, start it in the background
+if [ "${ENABLE_GRPC:-false}" = "true" ]; then
+  echo "🌐 Starting gRPC server on port ${GRPC_PORT}"
+  # -u for unbuffered logs
+  python -u hello/grpc_server.py &
+fi
+
+# Now start Uvicorn (FastAPI)
+if [ "$WEB_RELOAD" = "true" ]; then
+  echo "🚀 Starting FastAPI (dev mode w/ reload)"
+  exec uvicorn hello.app:app \
+    --host 0.0.0.0 \
+    --port "${PORT:-8000}" \
+    --reload \
+    --timeout-keep-alive "${WEB_TIMEOUT:-120}" \
+    --log-level info
+else
+  echo "🚀 Starting FastAPI (prod mode w/ ${WEB_CONCURRENCY:-4} workers)"
+  exec uvicorn hello.app:app \
+    --host 0.0.0.0 \
+    --port "${PORT:-8000}" \
+    --workers "${WEB_CONCURRENCY:-4}" \
+    --timeout-keep-alive "${WEB_TIMEOUT:-120}" \
+    --log-level info
+fi

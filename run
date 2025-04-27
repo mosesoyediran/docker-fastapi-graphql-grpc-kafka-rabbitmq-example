@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+
+set -o errexit
+set -o pipefail
+
+DC="${DC:-exec}"
+
+# If we're running in CI we need to disable TTY allocation for docker compose
+# commands that enable it by default, such as exec and run.
+TTY="${TTY:-}"
+if [[ ! -t 1 ]]; then
+  TTY="-T"
+fi
+
+# -----------------------------------------------------------------------------
+# Helper functions start with _ and aren't listed in this script's help menu.
+# -----------------------------------------------------------------------------
+
+_dc() {
+  # shellcheck disable=SC2086
+  docker compose "${DC}" ${TTY} "${@}"
+}
+
+_dc_run() {
+  DC="run" _dc --no-deps --rm "${@}"
+}
+
+# -----------------------------------------------------------------------------
+
+# Run any Alembic command inside the web container
+db() {
+  cmd alembic "$@"
+}
+
+# Drop all migrations and rebuild from zero
+db:reset() {
+  db downgrade base
+  db upgrade head
+}
+
+cmd() {
+  # Run any command you want in the web container
+  _dc web "${@}"
+}
+
+fastapi() {
+  # If they invoked "fastapi db reset [args…]" hand off to our db:reset()
+  if [[ "$1" = "db" && "$2" = "reset" ]]; then
+    shift 2
+    db:reset "$@"
+    return
+  fi
+
+  # If they invoked "fastapi db [other…]" forward to db()
+  if [[ "$1" = "db" ]]; then
+    shift
+    db "$@"
+    return
+  fi
+
+  # Otherwise, we don't have any other FastAPI CLI commands registered
+  echo "No such fastapi sub-command: $*"
+  exit 1
+}
+
+lint:dockerfile() {
+  # Lint Dockerfile
+  docker container run --rm -i \
+    -v "${PWD}/.hadolint.yaml:/.config/hadolint.yaml" \
+    hadolint/hadolint hadolint "${@}" - <Dockerfile
+}
+
+lint:shell() {
+  # Lint shell scripts
+  local cmd=(shellcheck)
+
+  if ! command -v shellcheck >/dev/null 2>&1; then
+    local cmd=(docker container run --rm -i -v "${PWD}:/mnt" koalaman/shellcheck:stable)
+  fi
+
+  find . -type f \
+    ! -path "./.git/*" \
+    ! -path "./.ruff_cache/*" \
+    ! -path "./.pytest_cache/*" \
+    ! -path "./assets/*" \
+    ! -path "./public/*" \
+    -exec grep --quiet '^#!.*sh' {} \; -exec "${cmd[@]}" {} +
+}
+
+lint() {
+  # Lint Python code
+  cmd ruff check "${@}"
+}
+
+format:shell() {
+  # Format shell scripts
+  local cmd=(shfmt)
+
+  if ! command -v shfmt >/dev/null 2>&1; then
+    local cmd=(docker container run --rm -i -v "${PWD}:/mnt" -u "$(id -u):$(id -g)" -w /mnt mvdan/shfmt:v3)
+  fi
+
+  local maybe_write=("--write")
+
+  for arg in "${@}"; do
+    if [ "${arg}" == "-d" ] || [ "${arg}" == "--diff" ]; then
+      unset "maybe_write[0]"
+    fi
+  done
+
+  "${cmd[@]}" "${maybe_write[@]}" "${@}" .
+}
+
+format() {
+  # Format Python code
+  cmd ruff check --fix
+  cmd ruff format "${@}"
+}
+
+quality() {
+  # Perform all code quality commands together
+  lint:dockerfile
+  lint:shell
+  lint
+
+  format:shell
+  format
+}
+
+test() {
+  # Run test suite
+  cmd pytest test/ "${@}"
+}
+
+test:coverage() {
+  # Get test coverage
+  cmd pytest --cov test/ --cov-report term-missing "${@}"
+}
+
+shell() {
+  # Start a shell session in the web container
+  cmd bash "${@}"
+}
+
+psql() {
+  # Connect to PostgreSQL
+  # shellcheck disable=SC1091
+  . .env
+  _dc postgres psql -U "${POSTGRES_USER}" "${@}"
+}
+
+redis-cli() {
+  # Connect to Redis
+  _dc redis redis-cli "${@}"
+}
+
+deps:install() {
+  # Install back-end and / or front-end dependencies
+  local no_build="${1:-}"
+
+  [ -z "${no_build}" ] && docker compose down && docker compose build
+
+  _dc_run js yarn install
+  _dc_run web bin/uv-install
+}
+
+uv() {
+  # Run any uv commands
+  cmd uv "${@}"
+}
+
+uv:outdated() {
+  # List any installed packages that are outdated
+  _dc_run web uv tree --outdated --depth 1 "${@}"
+}
+
+yarn() {
+  # Run any yarn commands
+  _dc js yarn "${@}"
+}
+
+yarn:outdated() {
+  # List any installed packages that are outdated
+  _dc_run js yarn outdated
+}
+
+yarn:build:js() {
+  # Build JS assets, this is meant to be run from within the assets container
+  mkdir -p ../public/js
+  node esbuild.config.mjs
+}
+
+yarn:build:css() {
+  # Build CSS assets, this is meant to be run from within the assets container
+  local args=()
+
+  if [ "${NODE_ENV:-}" == "production" ]; then
+    args=(--minify)
+  else
+    args=(--watch)
+  fi
+
+  mkdir -p ../public/css
+  tailwindcss -i css/app.css -o ../public/css/app.css "${args[@]}"
+}
+
+clean() {
+  # Remove cache and other machine generates files
+  rm -rf public/*.* public/js public/css public/images public/fonts \
+    .ruff_cache/ .pytest_cache/ .coverage celerybeat-schedule
+
+  touch public/.keep
+}
+
+ci:install-deps() {
+  # Install Continuous Integration (CI) dependencies
+  sudo apt-get install -y curl
+  sudo curl \
+    -L https://raw.githubusercontent.com/nickjj/wait-until/v0.2.0/wait-until \
+    -o /usr/local/bin/wait-until && sudo chmod +x /usr/local/bin/wait-until
+}
+
+ci:test() {
+  # Execute Continuous Integration (CI) pipeline
+  lint:dockerfile "${@}"
+  lint:shell
+  format:shell --diff
+
+  cp --no-clobber .env.example .env
+
+  docker compose build
+  docker compose up -d
+
+  # shellcheck disable=SC1091
+  . .env
+  wait-until "docker compose exec -T \
+    -e PGPASSWORD=${POSTGRES_PASSWORD} postgres \
+    psql -U ${POSTGRES_USER} ${POSTGRES_USER} -c 'SELECT 1'"
+
+  docker compose logs
+
+  lint "${@}"
+  format --check --diff
+  fastapi db reset --with-testdb
+  test "${@}"
+}
+
+help() {
+  printf "%s <task> [args]\n\nTasks:\n" "${0}"
+
+  compgen -A function | grep -v "^_" | cat -n
+
+  printf "\nExtended help:\n  Each task has comments for general usage\n"
+}
+
+# This idea is heavily inspired by: https://github.com/adriancooney/Taskfile
+TIMEFORMAT=$'\nTask completed in %3lR'
+time "${@:-help}"
